@@ -74,21 +74,30 @@ export default {
 
       // 请求服务器，获取minio的请求的地址
       let uploadName = getUUID() + file.name;
-      this.$http
-        .get(`/third-service/minio/getPresignedObjectUrl?name=${uploadName}`)
-        .then(({ data }) => {
-          // 获取到minio返回的上传地址
-          let uploadUrl = data.data.url;
 
-          // 解析出上传成功后文件的地址
-          let url = uploadUrl.substr(0, uploadUrl.indexOf("?"));
+      this.$http({
+              url: this.$http.adornUrl(`/third-service/minio/getPresignedObjectUrl?name=${uploadName}`),
+              method: "get"
+            }).then(({ data }) => {
+                // 获取到minio返回的上传地址
+                let uploadUrl = data.url;
 
-          this.$http.put(uploadUrl, file).then((data) => {
-            this.fileList.pop();
-            this.fileList.push({ name: uploadName, url: url });
-            this.$emit("input", url)
-            this.showFileList = true
-          });
+                // 解析出上传成功后文件的地址
+                let url = uploadUrl.substr(0, uploadUrl.indexOf("?"));
+
+                this.$http
+                // ({
+                //     url: uploadUrl,
+                //     method: "put",
+                //     data:{file}
+                //   })
+                  .put(uploadUrl, file, {headers:{"Content-Type":"multiple/form-data"}})
+                  .then((data) => {
+                  this.fileList.pop();
+                  this.fileList.push({ name: uploadName, url: url });
+                  this.$emit("input", url)
+                  this.showFileList = true
+                });
         });
     },
   },
