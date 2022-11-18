@@ -2,7 +2,7 @@
   <div>
     <el-upload
       class="upload-demo"
-      multiple
+      multiple="false"
       :limit="10"
       :file-list="fileList"
       :http-request="httpRequest"

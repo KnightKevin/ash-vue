@@ -1,62 +1,72 @@
 <template>
   <div>
     <el-upload
-      action="http://gulimall-clouds.oss-cn-beijing.aliyuncs.com"
-      :data="dataObj"
+      class="upload-demo"
+      multiple
       :list-type="listType"
       :file-list="fileList"
-      :before-upload="beforeUpload"
-      :on-remove="handleRemove"
-      :on-success="handleUploadSuccess"
-      :on-preview="handlePreview"
+      :http-request="httpRequest"
+      :on-remove="onRemove"
+      :on-preview="onPreview"
       :limit="maxCount"
-      :on-exceed="handleExceed"
-      :show-file-list="showFile"
+      :show-file-list="showFileList"
+      :on-exceed="onExceed"
+      action=""
     >
-      <i class="el-icon-plus"></i>
+      <i slot="default" class="el-icon-plus"></i>
+      <div slot="file" slot-scope="{file}">
+        <img
+          class="el-upload-list__item-thumbnail"
+          :src="file.url" alt=""
+        >
+        <span class="el-upload-list__item-actions">
+          <span
+            class="el-upload-list__item-preview"
+            @click="handlePictureCardPreview(file)"
+          >
+            <i class="el-icon-zoom-in"></i>
+          </span>
+          <span
+            v-if="!disabled"
+            class="el-upload-list__item-delete"
+            @click="handleDownload(file)"
+          >
+            <i class="el-icon-download"></i>
+          </span>
+          <span
+            v-if="!disabled"
+            class="el-upload-list__item-delete"
+            @click="handleRemove(file)"
+          >
+            <i class="el-icon-delete"></i>
+          </span>
+        </span>
+      </div>
     </el-upload>
     <el-dialog :visible.sync="dialogVisible">
-      <img width="100%" :src="dialogImageUrl" alt />
+      <img width="100%" :src="dialogImageUrl" alt="">
     </el-dialog>
   </div>
 </template>
+
 <script>
-import { policy } from "./policy";
-import { getUUID } from '@/utils'
+import { getUUID } from "@/utils";
 export default {
-  name: "multiUpload",
+  name: 'multiUpload',
   props: {
-    //图片属性数组
     value: Array,
-    //最大上传图片数量
     maxCount: {
       type: Number,
       default: 30
     },
-    listType:{
+    listType: {
       type: String,
       default: "picture-card"
     },
-    showFile:{
+    showFile: {
       type: Boolean,
       default: true
     }
-
-  },
-  data() {
-    return {
-      dataObj: {
-        policy: "",
-        signature: "",
-        key: "",
-        ossaccessKeyId: "",
-        dir: "",
-        host: "",
-        uuid: ""
-      },
-      dialogVisible: false,
-      dialogImageUrl: null
-    };
   },
   computed: {
     fileList() {
@@ -66,9 +76,23 @@ export default {
       }
 
       return fileList;
+    },
+    showFileList: {
+      get: function() {
+        return this.value != ''
+      },
+      set: function (newValue) {
+
+      }
     }
   },
-  mounted() {},
+  data() {
+    return {
+      dialogImageUrl: '',
+      dialogVisible: false,
+      disabled: false
+    };
+  },
   methods: {
     emitInput(fileList) {
       let value = [];
@@ -77,52 +101,61 @@ export default {
       }
       this.$emit("input", value);
     },
-    handleRemove(file, fileList) {
-      this.emitInput(fileList);
-    },
-    handlePreview(file) {
+    onPreview(file){
       this.dialogVisible = true;
       this.dialogImageUrl = file.url;
     },
-    beforeUpload(file) {
-      let _self = this;
-      return new Promise((resolve, reject) => {
-        policy()
-          .then(response => {
-            console.log("这是什么${filename}");
-            _self.dataObj.policy = response.data.policy;
-            _self.dataObj.signature = response.data.signature;
-            _self.dataObj.ossaccessKeyId = response.data.accessid;
-            _self.dataObj.key = response.data.dir +getUUID()+"_${filename}";
-            _self.dataObj.dir = response.data.dir;
-            _self.dataObj.host = response.data.host;
-            resolve(true);
-          })
-          .catch(err => {
-            console.log("出错了...",err)
-            reject(false);
-          });
-      });
+    onRemove(file, fileList) {
+      this.emitInput(fileList);
     },
-    handleUploadSuccess(res, file) {
-      this.fileList.push({
-        name: file.name,
-        // url: this.dataObj.host + "/" + this.dataObj.dir + "/" + file.name； 替换${filename}为真正的文件名
-        url: this.dataObj.host + "/" + this.dataObj.key.replace("${filename}",file.name)
-      });
-      this.emitInput(this.fileList);
+    httpRequest(data) {
+      let { file } = data;
+
+      console.log("file", data);
+
+      // 请求服务器，获取minio的请求的地址
+      let uploadName = getUUID() + file.name;
+
+      this.$http({
+              url: this.$http.adornUrl(`/third-service/minio/getPresignedObjectUrl?name=${uploadName}`),
+              method: "get"
+            }).then(({ data }) => {
+                // 获取到minio返回的上传地址
+                let uploadUrl = data.url;
+
+                // 解析出上传成功后文件的地址
+                let url = uploadUrl.substr(0, uploadUrl.indexOf("?"));
+
+                this.fileList.push({
+                  name: uploadName,
+                  url: url
+                })
+
+                this.$http
+                // ({
+                //     url: uploadUrl,
+                //     method: "put",
+                //     data:{file}
+                //   })
+                  .put(uploadUrl, file, {headers:{"Content-Type":"multiple/form-data"}})
+                  .then((data) => {
+                  this.fileList.pop();
+                  this.fileList.push({ name: uploadName, url: url });
+                  //  this.$emit("input", url)
+                  this.showFileList = true
+
+                  this.emitInput(this.fileList);
+
+                });
+        });
     },
-    handleExceed(files, fileList) {
+    onExceed() {
       this.$message({
         message: "最多只能上传" + this.maxCount + "张图片",
         type: "warning",
         duration: 1000
       });
     }
-  }
+  },
 };
 </script>
-<style>
-</style>
-
-
